@@ -1,0 +1,9 @@
+{
+  "name": "angelo-bosito-portfolio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static portfolio site with a Vercel serverless contact form (Resend).",
+  "dependencies": {
+    "resend": "^4.4.1"
+  }
+}
