@@ -9,8 +9,6 @@
 //   CONTACT_FROM_EMAIL - the "from" address Resend sends as (must be on a
 //                         domain you've verified in Resend)
 
-const { Resend } = require('resend');
-
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_NAME = 200;
 const MAX_EMAIL = 320;
@@ -37,88 +35,111 @@ function readJsonBody(req) {
 }
 
 module.exports = async function handler(req, res) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
-    return res.status(405).json({ ok: false, error: 'Method not allowed.' });
-  }
-
-  const body = readJsonBody(req);
-
-  const name = typeof body.name === 'string' ? body.name.trim() : '';
-  const email = typeof body.email === 'string' ? body.email.trim() : '';
-  const message = typeof body.message === 'string' ? body.message.trim() : '';
-  const inquiryType = typeof body.inquiry_type === 'string' ? body.inquiry_type.trim().slice(0, 100) : '';
-  const honeypot = typeof body.company === 'string' ? body.company.trim() : '';
-  const startedAt = Number(body.started_at) || 0;
-
-  // --- Spam protection (no database, all stateless/computed per-request) ---
-  // 1) Honeypot field: hidden from real visitors via CSS, bots often fill it.
-  // 2) Timing trap: a submission that arrives faster than a human could type
-  //    is almost certainly scripted.
-  // Both cases return a "success" response so bots don't learn to route
-  // around the check, without ever calling Resend.
-  if (honeypot) {
-    return res.status(200).json({ ok: true });
-  }
-  if (startedAt && Date.now() - startedAt < MIN_FILL_MS) {
-    return res.status(200).json({ ok: true });
-  }
-
-  // --- Server-side validation (never trust the client) ---
-  if (!name || name.length > MAX_NAME) {
-    return res.status(400).json({ ok: false, error: 'Please enter a valid name.' });
-  }
-  if (!email || email.length > MAX_EMAIL || !EMAIL_RE.test(email)) {
-    return res.status(400).json({ ok: false, error: 'Please enter a valid email address.' });
-  }
-  if (!message) {
-    return res.status(400).json({ ok: false, error: 'Please add a message.' });
-  }
-  if (message.length > MAX_MESSAGE) {
-    return res.status(400).json({ ok: false, error: 'Message is too long (5000 characters max).' });
-  }
-
-  const apiKey = process.env.RESEND_API_KEY;
-  const toEmail = process.env.CONTACT_TO_EMAIL;
-  const fromEmail = process.env.CONTACT_FROM_EMAIL;
-
-  if (!apiKey || !toEmail || !fromEmail) {
-    console.error('Contact form is missing required environment variables (RESEND_API_KEY / CONTACT_TO_EMAIL / CONTACT_FROM_EMAIL).');
-    return res.status(500).json({ ok: false, error: 'The contact form isn\u2019t fully configured yet. Please email me directly instead.' });
-  }
-
-  const resend = new Resend(apiKey);
-  const subject = `New inquiry from ${name}${inquiryType ? ' \u2014 ' + inquiryType : ''}`;
-  const textBody =
-    `Name: ${name}\n` +
-    `Email: ${email}\n` +
-    (inquiryType ? `Inquiry type: ${inquiryType}\n` : '') +
-    `\nMessage:\n${message}`;
-  const htmlBody =
-    `<p><strong>Name:</strong> ${escapeHtml(name)}</p>` +
-    `<p><strong>Email:</strong> ${escapeHtml(email)}</p>` +
-    (inquiryType ? `<p><strong>Inquiry type:</strong> ${escapeHtml(inquiryType)}</p>` : '') +
-    `<p><strong>Message:</strong></p>` +
-    `<p>${escapeHtml(message).replace(/\n/g, '<br>')}</p>`;
-
   try {
-    const { error } = await resend.emails.send({
-      from: fromEmail,
-      to: toEmail,
-      replyTo: email,
-      subject: subject,
-      text: textBody,
-      html: htmlBody
-    });
+    if (req.method !== 'POST') {
+      res.setHeader('Allow', 'POST');
+      return res.status(405).json({ ok: false, error: 'Method not allowed.' });
+    }
 
-    if (error) {
-      console.error('Resend returned an error:', error);
+    const body = readJsonBody(req);
+
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    const email = typeof body.email === 'string' ? body.email.trim() : '';
+    const message = typeof body.message === 'string' ? body.message.trim() : '';
+    const inquiryType = typeof body.inquiry_type === 'string' ? body.inquiry_type.trim().slice(0, 100) : '';
+    const honeypot = typeof body.company === 'string' ? body.company.trim() : '';
+    const startedAt = Number(body.started_at) || 0;
+
+    // --- Spam protection (no database, all stateless/computed per-request) ---
+    // 1) Honeypot field: hidden from real visitors via CSS, bots often fill it.
+    // 2) Timing trap: a submission that arrives faster than a human could type
+    //    is almost certainly scripted.
+    // Both cases return a "success" response so bots don't learn to route
+    // around the check, without ever calling Resend.
+    if (honeypot) {
+      return res.status(200).json({ ok: true });
+    }
+    if (startedAt && Date.now() - startedAt < MIN_FILL_MS) {
+      return res.status(200).json({ ok: true });
+    }
+
+    // --- Server-side validation (never trust the client) ---
+    if (!name || name.length > MAX_NAME) {
+      return res.status(400).json({ ok: false, error: 'Please enter a valid name.' });
+    }
+    if (!email || email.length > MAX_EMAIL || !EMAIL_RE.test(email)) {
+      return res.status(400).json({ ok: false, error: 'Please enter a valid email address.' });
+    }
+    if (!message) {
+      return res.status(400).json({ ok: false, error: 'Please add a message.' });
+    }
+    if (message.length > MAX_MESSAGE) {
+      return res.status(400).json({ ok: false, error: 'Message is too long (5000 characters max).' });
+    }
+
+    const apiKey = process.env.RESEND_API_KEY;
+    const toEmail = process.env.CONTACT_TO_EMAIL;
+    const fromEmail = process.env.CONTACT_FROM_EMAIL;
+
+    if (!apiKey || !toEmail || !fromEmail) {
+      console.error('Contact form is missing required environment variables (RESEND_API_KEY / CONTACT_TO_EMAIL / CONTACT_FROM_EMAIL).');
+      return res.status(500).json({ ok: false, error: 'The contact form isn\u2019t fully configured yet. Please email me directly instead.' });
+    }
+
+    let resend;
+    try {
+      const { Resend } = require('resend');
+      resend = new Resend(apiKey);
+    } catch (importErr) {
+      console.error('Failed to load the "resend" package. Is it in package.json and installed?', importErr);
+      return res.status(500).json({ ok: false, error: 'The contact form isn\u2019t fully configured yet. Please email me directly instead.' });
+    }
+
+    const subject = `New inquiry from ${name}${inquiryType ? ' \u2014 ' + inquiryType : ''}`;
+    const textBody =
+      `Name: ${name}\n` +
+      `Email: ${email}\n` +
+      (inquiryType ? `Inquiry type: ${inquiryType}\n` : '') +
+      `\nMessage:\n${message}`;
+    const htmlBody =
+      `<p><strong>Name:</strong> ${escapeHtml(name)}</p>` +
+      `<p><strong>Email:</strong> ${escapeHtml(email)}</p>` +
+      (inquiryType ? `<p><strong>Inquiry type:</strong> ${escapeHtml(inquiryType)}</p>` : '') +
+      `<p><strong>Message:</strong></p>` +
+      `<p>${escapeHtml(message).replace(/\n/g, '<br>')}</p>`;
+
+    let sendResult;
+    try {
+      sendResult = await resend.emails.send({
+        from: fromEmail,
+        to: toEmail,
+        replyTo: email,
+        subject: subject,
+        text: textBody,
+        html: htmlBody
+      });
+    } catch (sendErr) {
+      console.error('Contact form send threw an exception:', sendErr);
+      return res.status(500).json({ ok: false, error: 'Could not send your message right now. Please try again shortly, or email me directly.' });
+    }
+
+    const sendError = sendResult && sendResult.error;
+    if (sendError) {
+      console.error('Resend returned an error:', sendError);
       return res.status(502).json({ ok: false, error: 'Could not send your message right now. Please try again shortly, or email me directly.' });
     }
 
     return res.status(200).json({ ok: true });
   } catch (err) {
-    console.error('Contact form send failed:', err);
-    return res.status(500).json({ ok: false, error: 'Could not send your message right now. Please try again shortly, or email me directly.' });
+    // Last-resort catch-all: guarantees the client always gets a clean JSON
+    // error (a plain string) instead of a platform-level crash page/body.
+    console.error('Unhandled error in /api/contact:', err);
+    try {
+      return res.status(500).json({ ok: false, error: 'Something went wrong on our end. Please try again, or email me directly.' });
+    } catch (finalErr) {
+      // If headers were already sent or res itself is broken, there's
+      // nothing more we can do here.
+      console.error('Failed to send error response from /api/contact:', finalErr);
+    }
   }
 };
